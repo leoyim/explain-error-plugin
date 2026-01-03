@@ -6,9 +6,11 @@ import hudson.model.Run;
 import jenkins.model.RunAction2;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.List;
 import java.util.logging.Logger;
 import javax.servlet.ServletException;
 import net.sf.json.JSONObject;
+
 import org.kohsuke.stapler.StaplerRequest2;
 import org.kohsuke.stapler.StaplerResponse2;
 import org.kohsuke.stapler.interceptor.RequirePOST;
@@ -22,6 +24,7 @@ public class ConsoleExplainErrorAction implements RunAction2 {
     private static final Logger LOGGER = Logger.getLogger(ConsoleExplainErrorAction.class.getName());
 
     private transient Run<?, ?> run;
+    private String urlString;
 
     public ConsoleExplainErrorAction(Run<?, ?> run) {
         this.run = run;
@@ -86,12 +89,15 @@ public class ConsoleExplainErrorAction implements RunAction2 {
             }
 
             // Fetch the last N lines of the log
-            java.util.List<String> logLines = run.getLog(maxLines);
+            PipelineLogExtractor logExtractor = new PipelineLogExtractor(run, maxLines);
+            List<String> logLines = logExtractor.getFailedStepLog();
+            this.urlString = logExtractor.getUrl();
+
             String errorText = String.join("\n", logLines);
 
             ErrorExplainer explainer = new ErrorExplainer();
             try {
-                ErrorExplanationAction action = explainer.explainErrorText(errorText, run);
+                ErrorExplanationAction action = explainer.explainErrorText(errorText, urlString, run);
                 writeJsonResponse(rsp, "success", action.getProviderName(), action.getExplanation());
             } catch (ExplanationException ee) {
                 writeJsonResponse(rsp, ee.getLevel(), explainer.getProviderName(), ee.getMessage());
@@ -145,6 +151,7 @@ public class ConsoleExplainErrorAction implements RunAction2 {
         json.put("status", status);
         json.put("providerName", providerName);
         json.put("message", message);
+        json.put("url", urlString);
         writer.write(json.toString());
         writer.flush();
     }
